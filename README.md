@@ -1,6 +1,6 @@
 # pi-pact
 
-Pact improves Pi compaction by only compacting older history while keeping recent turns intact.
+Pact improves Pi by retaining recent messages when compacting.
 
 ## Install
 
