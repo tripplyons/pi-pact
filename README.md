@@ -24,7 +24,7 @@ Pact reads configuration in this order, with later values overriding earlier one
 2. Global config: `~/.pi/agent/pact.json`
 3. Trusted project config: `.pi/pact.json`
 4. Environment variables
-5. Session-local `/pact` commands
+5. Session-local setting commands such as `/pact:on` and `/pact:fraction`
 
 Example `pact.json`:
 
@@ -54,10 +54,19 @@ Environment variable overrides:
 - `PACT_DEBUG=1|0|true|false`
 - `PACT_DEBUG_FILE=/tmp/pact.jsonl`
 
-Slash command:
+Slash commands:
 
 ```text
-/pact [on|off|toggle|status|stats|debug [on|off]|verify|now|fraction N|threshold N]
+/pact                  manually trigger compaction
+/pact:on               enable automatic Pact compaction
+/pact:off              disable automatic Pact compaction
+/pact:toggle           toggle automatic Pact compaction
+/pact:status           show current Pact settings
+/pact:stats            show Pact compaction stats
+/pact:debug [on|off]   toggle or set context-order debug notifications
+/pact:verify           verify compaction summary ordering
+/pact:fraction N       set the fraction of tool results to compact
+/pact:threshold N      set the token count or percent threshold
 ```
 
 ## Development

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
+import registerPactExtension, {
 	buildPactPreparation,
 	boundaryStartIndex,
 	findPactCutIndex,
@@ -172,5 +172,32 @@ test("verifyCompactionSummaryOrder warns when the summary is not first", () => {
 
 	assert.equal(verification.ok, false);
 	assert.match(verification.message, /not first/);
+});
+
+test("registers /pact as manual trigger and management commands with colon names", () => {
+	const commands = new Map();
+	const pi = {
+		on() {},
+		registerCommand(name, options) {
+			commands.set(name, options);
+		},
+	};
+
+	registerPactExtension(pi);
+
+	assert.deepEqual([...commands.keys()].sort(), [
+		"pact",
+		"pact:debug",
+		"pact:fraction",
+		"pact:off",
+		"pact:on",
+		"pact:stats",
+		"pact:status",
+		"pact:threshold",
+		"pact:toggle",
+		"pact:verify",
+	].sort());
+	assert.match(commands.get("pact").description, /Manually trigger/);
+	assert.match(commands.get("pact:stats").description, /stats/i);
 });
 

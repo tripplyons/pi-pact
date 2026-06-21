@@ -455,51 +455,149 @@ export default function (pi: ExtensionAPI) {
 		verifyNextContext = false;
 	});
 
+	const notifyStatus = (ctx: ExtensionContext) => {
+		setStatus(ctx);
+		ctx.ui.notify(
+			`Pact ${enabled ? "on" : "off"}; fraction ${fraction}; threshold ${formatThreshold(threshold)}`,
+			"info",
+		);
+	};
+
 	pi.registerCommand("pact", {
-		description: "Control early partial compaction: /pact, /pact on|off|toggle|status|stats|debug|verify|now|fraction N|threshold N",
+		description: "Manually trigger early partial compaction",
 		handler: async (args, ctx) => {
-			const [action = "", value = ""] = args.trim().split(/\s+/, 2);
+			if (args.trim() !== "") {
+				ctx.ui.notify("Usage: /pact", "warning");
+				return;
+			}
+			triggerPact(ctx, "manual");
+		},
+	});
+
+	pi.registerCommand("pact:on", {
+		description: "Enable automatic Pact compaction",
+		handler: async (args, ctx) => {
+			if (args.trim() !== "") {
+				ctx.ui.notify("Usage: /pact:on", "warning");
+				return;
+			}
+			enabled = true;
+			notifyStatus(ctx);
+		},
+	});
+
+	pi.registerCommand("pact:off", {
+		description: "Disable automatic Pact compaction",
+		handler: async (args, ctx) => {
+			if (args.trim() !== "") {
+				ctx.ui.notify("Usage: /pact:off", "warning");
+				return;
+			}
+			enabled = false;
+			notifyStatus(ctx);
+		},
+	});
+
+	pi.registerCommand("pact:toggle", {
+		description: "Toggle automatic Pact compaction",
+		handler: async (args, ctx) => {
+			if (args.trim() !== "") {
+				ctx.ui.notify("Usage: /pact:toggle", "warning");
+				return;
+			}
+			enabled = !enabled;
+			notifyStatus(ctx);
+		},
+	});
+
+	pi.registerCommand("pact:status", {
+		description: "Show Pact settings",
+		handler: async (args, ctx) => {
+			if (args.trim() !== "") {
+				ctx.ui.notify("Usage: /pact:status", "warning");
+				return;
+			}
+			notifyStatus(ctx);
+		},
+	});
+
+	pi.registerCommand("pact:stats", {
+		description: "Show Pact compaction stats",
+		handler: async (args, ctx) => {
+			if (args.trim() !== "") {
+				ctx.ui.notify("Usage: /pact:stats", "warning");
+				return;
+			}
+			const times = pactCompactions === 1 ? "time" : "times";
+			ctx.ui.notify(`This session has been compacted through Pact ${pactCompactions} ${times}.`, "info");
+		},
+	});
+
+	pi.registerCommand("pact:debug", {
+		description: "Toggle Pact context-order debug notifications, or pass on/off",
+		handler: async (args, ctx) => {
+			const value = args.trim();
+			if (value === "") {
+				debugOrder = !debugOrder;
+			} else if (value === "on") {
+				debugOrder = true;
+			} else if (value === "off") {
+				debugOrder = false;
+			} else {
+				ctx.ui.notify("Usage: /pact:debug [on|off]", "warning");
+				return;
+			}
+			ctx.ui.notify(`Pact context-order debug ${debugOrder ? "on" : "off"}`, "info");
+		},
+	});
+
+	pi.registerCommand("pact:verify", {
+		description: "Verify current Pact compaction summary ordering",
+		handler: async (args, ctx) => {
+			if (args.trim() !== "") {
+				ctx.ui.notify("Usage: /pact:verify", "warning");
+				return;
+			}
+			const context = ctx.sessionManager.buildSessionContext();
+			const verification = verifyCompactionSummaryOrder(context.messages);
+			const order = summarizeMessageOrder(context.messages);
+			ctx.ui.notify(`${verification.message}. First messages: ${order}`, verification.ok ? "info" : "warning");
+		},
+	});
+
+	pi.registerCommand("pact:fraction", {
+		description: "Set the fraction of tool results Pact compacts",
+		handler: async (args, ctx) => {
+			const value = args.trim();
+			if (value === "") {
+				ctx.ui.notify("Usage: /pact:fraction N", "warning");
+				return;
+			}
 			try {
-				if (action === "" || action === "now") {
-					triggerPact(ctx, "manual");
-				} else if (action === "on") {
-					enabled = true;
-				} else if (action === "off") {
-					enabled = false;
-				} else if (action === "toggle") {
-					enabled = !enabled;
-				} else if (action === "fraction") {
-					fraction = parseFraction(value);
-				} else if (action === "threshold") {
-					threshold = parseThreshold(value);
-				} else if (action === "stats") {
-					const times = pactCompactions === 1 ? "time" : "times";
-					ctx.ui.notify(`This session has been compacted through Pact ${pactCompactions} ${times}.`, "info");
-					return;
-				} else if (action === "debug") {
-					debugOrder = value === "" ? !debugOrder : value === "on";
-					ctx.ui.notify(`Pact context-order debug ${debugOrder ? "on" : "off"}`, "info");
-					return;
-				} else if (action === "verify") {
-					const context = ctx.sessionManager.buildSessionContext();
-					const verification = verifyCompactionSummaryOrder(context.messages);
-					const order = summarizeMessageOrder(context.messages);
-					ctx.ui.notify(`${verification.message}. First messages: ${order}`, verification.ok ? "info" : "warning");
-					return;
-				} else if (action !== "status") {
-					ctx.ui.notify("Usage: /pact [on|off|toggle|status|stats|debug [on|off]|verify|now|fraction N|threshold N]", "warning");
-					return;
-				}
+				fraction = parseFraction(value);
 			} catch (error) {
 				ctx.ui.notify(errorMessage(error), "warning");
 				return;
 			}
+			notifyStatus(ctx);
+		},
+	});
 
-			setStatus(ctx);
-			ctx.ui.notify(
-				`Pact ${enabled ? "on" : "off"}; fraction ${fraction}; threshold ${formatThreshold(threshold)}`,
-				"info",
-			);
+	pi.registerCommand("pact:threshold", {
+		description: "Set the token or percent threshold for automatic Pact compaction",
+		handler: async (args, ctx) => {
+			const value = args.trim();
+			if (value === "") {
+				ctx.ui.notify("Usage: /pact:threshold N", "warning");
+				return;
+			}
+			try {
+				threshold = parseThreshold(value);
+			} catch (error) {
+				ctx.ui.notify(errorMessage(error), "warning");
+				return;
+			}
+			notifyStatus(ctx);
 		},
 	});
 }
