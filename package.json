@@ -1,0 +1,41 @@
+{
+  "name": "pi-pact",
+  "version": "0.1.0",
+  "description": "Improves Pi compaction by only compacting older history while keeping recent turns intact.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Tripp Lyons",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tripplyons/pi-pact.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tripplyons/pi-pact/issues"
+  },
+  "homepage": "https://github.com/tripplyons/pi-pact#readme",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "compaction",
+    "pact"
+  ],
+  "scripts": {
+    "check": "node --experimental-strip-types --check extensions/pact.ts",
+    "test": "node --experimental-strip-types --test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/pact.ts"
+    ]
+  },
+  "files": [
+    "extensions",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
