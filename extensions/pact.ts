@@ -3,17 +3,22 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 export const DEFAULT_FRACTION = 0.8;
-export const DEFAULT_THRESHOLD = { kind: "tokens", value: 160000 };
+export const DEFAULT_THRESHOLD = { kind: "percent", value: 0.6 };
+
+export function formatPercentAmount(value) {
+	return `${Math.round(value * 100)}%`;
+}
 
 export function formatThreshold(threshold) {
-	if (threshold.kind === "percent") return `${Math.round(threshold.value * 100)}%`;
+	if (threshold.kind === "percent") return formatPercentAmount(threshold.value);
 	return threshold.value.toLocaleString();
 }
 
 export function parseFraction(value) {
-	const fraction = Number(value);
+	const trimmed = String(value).trim();
+	const fraction = trimmed.endsWith("%") ? Number(trimmed.slice(0, -1)) / 100 : Number(trimmed);
 	if (!Number.isFinite(fraction) || fraction <= 0 || fraction > 1) {
-		throw new Error("Fraction must be a number greater than 0 and at most 1");
+		throw new Error("Fraction must be a number greater than 0 and at most 1, or a percent like 80%");
 	}
 	return fraction;
 }
@@ -282,7 +287,7 @@ export default function (pi: ExtensionAPI) {
 
 	const setStatus = (ctx: ExtensionContext) => {
 		const state = ctx.ui.theme.fg("accent", enabled ? "on" : "off");
-		const settings = ctx.ui.theme.fg("muted", `${fraction} @ ${formatThreshold(threshold)} `);
+		const settings = ctx.ui.theme.fg("muted", `${formatPercentAmount(fraction)} @ ${formatThreshold(threshold)} `);
 		ctx.ui.setStatus("pact", ctx.ui.theme.fg("dim", "pact ") + (enabled ? settings : "") + state);
 	};
 
@@ -458,7 +463,7 @@ export default function (pi: ExtensionAPI) {
 	const notifyStatus = (ctx: ExtensionContext) => {
 		setStatus(ctx);
 		ctx.ui.notify(
-			`Pact ${enabled ? "on" : "off"}; fraction ${fraction}; threshold ${formatThreshold(threshold)}`,
+			`Pact ${enabled ? "on" : "off"}; remove ${formatPercentAmount(fraction)}; threshold ${formatThreshold(threshold)}`,
 			"info",
 		);
 	};
@@ -566,7 +571,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("pact:fraction", {
-		description: "Set the fraction of tool results Pact compacts",
+		description: "Set the percentage of eligible tool results Pact summarizes out of live context",
 		handler: async (args, ctx) => {
 			const value = args.trim();
 			if (value === "") {

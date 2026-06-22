@@ -2,9 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import registerPactExtension, {
+	DEFAULT_THRESHOLD,
 	buildPactPreparation,
 	boundaryStartIndex,
 	findPactCutIndex,
+	formatPercentAmount,
+	formatThreshold,
 	parseFraction,
 	parseThreshold,
 	resolveThresholdTokens,
@@ -150,11 +153,16 @@ test("boundaryStartIndex starts at previous compaction first kept entry", () => 
 	assert.equal(boundaryStartIndex(entries), 2);
 });
 
-test("parse settings validates fraction and thresholds", () => {
+test("parse settings validates and formats percent amounts and thresholds", () => {
 	assert.equal(parseFraction("0.25"), 0.25);
+	assert.equal(parseFraction("80%"), 0.8);
+	assert.equal(formatPercentAmount(0.8), "80%");
 	assert.throws(() => parseFraction("2"), /at most 1/);
+	assert.deepEqual(DEFAULT_THRESHOLD, { kind: "percent", value: 0.6 });
 	assert.deepEqual(parseThreshold("125_000"), { kind: "tokens", value: 125000 });
 	assert.deepEqual(parseThreshold("60%"), { kind: "percent", value: 0.6 });
+	assert.equal(formatThreshold({ kind: "tokens", value: 125000 }), "125,000");
+	assert.equal(formatThreshold({ kind: "percent", value: 0.6 }), "60%");
 	assert.equal(resolveThresholdTokens({ kind: "percent", value: 0.6 }, 200000), 120000);
 });
 
