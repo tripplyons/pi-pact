@@ -1,6 +1,6 @@
 {
   "name": "pi-pact",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Improves Pi compaction by only compacting older history while keeping recent turns intact.",
   "type": "module",
   "license": "MIT",
@@ -24,6 +24,7 @@
     "test": "node --experimental-strip-types --test"
   },
   "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
   },
   "pi": {

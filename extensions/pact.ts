@@ -87,6 +87,19 @@ export function findPactCutIndex(entries, startIndex, fraction) {
 	return cutIndex < entries.length ? cutIndex : -1;
 }
 
+function timestampFromEntry(entry) {
+	return Date.parse(entry.timestamp) || Date.now();
+}
+
+function compactionEntryToMessage(entry) {
+	return {
+		role: "compactionSummary",
+		summary: entry.summary,
+		tokensBefore: entry.tokensBefore,
+		timestamp: timestampFromEntry(entry),
+	};
+}
+
 function entryToMessage(entry) {
 	if (entry.type === "message") return entry.message;
 	if (entry.type === "custom_message") {
@@ -96,7 +109,7 @@ function entryToMessage(entry) {
 			content: entry.content,
 			display: entry.display,
 			details: entry.details,
-			timestamp: Date.parse(entry.timestamp) || Date.now(),
+			timestamp: timestampFromEntry(entry),
 		};
 	}
 	if (entry.type === "branch_summary") {
@@ -104,7 +117,7 @@ function entryToMessage(entry) {
 			role: "branchSummary",
 			summary: entry.summary,
 			fromId: entry.fromId,
-			timestamp: Date.parse(entry.timestamp) || Date.now(),
+			timestamp: timestampFromEntry(entry),
 		};
 	}
 	return undefined;
@@ -178,6 +191,110 @@ export function buildPactPreparation(branchEntries, preparation, fraction) {
 	};
 }
 
+export function buildPrefixCachedCompactionMessages(branchEntries, preparation) {
+	const cutIndex = branchEntries.findIndex((entry) => entry.id === preparation.firstKeptEntryId);
+	if (cutIndex < 0) return preparation.messagesToSummarize;
+
+	const startIndex = boundaryStartIndex(branchEntries);
+	const messages = [];
+	const compaction = latestCompaction(branchEntries);
+	if (compaction) messages.push(compactionEntryToMessage(compaction.entry));
+	messages.push(...messagesFromEntries(branchEntries.slice(startIndex, cutIndex)));
+	return messages;
+}
+
+const SUMMARY_INSTRUCTION = `Create a structured context checkpoint summary that another LLM will use to continue the work.
+
+The previous messages are the conversation context to compact. If they begin with an existing compaction summary, preserve its important information and update it with the newer messages that follow.
+
+Do not continue the conversation. Do not call tools. Return only the summary.
+
+Use this EXACT format:
+
+## Goal
+[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+
+## Constraints & Preferences
+- [Any constraints, preferences, or requirements mentioned by user]
+- [Or "(none)" if none were mentioned]
+
+## Progress
+### Done
+- [x] [Completed tasks/changes]
+
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Issues preventing progress, if any]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Next Steps
+1. [Ordered list of what should happen next]
+
+## Critical Context
+- [Any data, examples, or references needed to continue]
+- [Or "(none)" if not applicable]
+
+Keep each section concise. Preserve exact file paths, function names, and error messages.`;
+
+function buildSummaryInstruction(customInstructions) {
+	if (!customInstructions) return SUMMARY_INSTRUCTION;
+	return `${SUMMARY_INSTRUCTION}\n\nAdditional focus: ${customInstructions}`;
+}
+
+function computeFileLists(fileOps) {
+	const modified = new Set([...fileOps.edited, ...fileOps.written]);
+	return {
+		readFiles: [...fileOps.read].filter((path) => !modified.has(path)).sort(),
+		modifiedFiles: [...modified].sort(),
+	};
+}
+
+function formatFileOperations(readFiles, modifiedFiles) {
+	const sections = [];
+	if (readFiles.length > 0) sections.push(`<read-files>\n${readFiles.join("\n")}\n</read-files>`);
+	if (modifiedFiles.length > 0) sections.push(`<modified-files>\n${modifiedFiles.join("\n")}\n</modified-files>`);
+	return sections.length > 0 ? `\n\n${sections.join("\n\n")}` : "";
+}
+
+async function generatePrefixCachedCompaction(branchEntries, preparation, model, auth, systemPrompt, customInstructions, signal) {
+	const { completeSimple } = await import("@earendil-works/pi-ai/compat");
+	const { convertToLlm } = await import("@earendil-works/pi-coding-agent");
+	const maxTokens = Math.min(
+		Math.floor(0.8 * preparation.settings.reserveTokens),
+		model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
+	);
+	const messages = convertToLlm([
+		...buildPrefixCachedCompactionMessages(branchEntries, preparation),
+		{ role: "user", content: buildSummaryInstruction(customInstructions), timestamp: Date.now() },
+	]);
+	const response = await completeSimple(
+		model,
+		{ systemPrompt, messages },
+		{ maxTokens, signal, apiKey: auth.apiKey, headers: auth.headers, env: auth.env },
+	);
+	if (response.stopReason === "error") {
+		throw new Error(`Summarization failed: ${response.errorMessage || "Unknown error"}`);
+	}
+
+	let summary = response.content
+		.filter((block) => block.type === "text")
+		.map((block) => block.text)
+		.join("\n");
+	if (!summary.trim()) throw new Error("Summarization failed: empty response");
+
+	const { readFiles, modifiedFiles } = computeFileLists(preparation.fileOps);
+	summary += formatFileOperations(readFiles, modifiedFiles);
+	return {
+		summary,
+		firstKeptEntryId: preparation.firstKeptEntryId,
+		tokensBefore: preparation.tokensBefore,
+		details: { readFiles, modifiedFiles },
+	};
+}
 
 const PACT_STATS_ENTRY = "pact-stats";
 const PACT_CONFIG_FILE = "pact.json";
@@ -397,12 +514,12 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		try {
-			const { compact } = await import("@earendil-works/pi-coding-agent");
-			const result = await compact(
+			const result = await generatePrefixCachedCompaction(
+				event.branchEntries,
 				pactPreparation,
 				model,
-				auth.apiKey,
-				auth.headers,
+				auth,
+				ctx.getSystemPrompt(),
 				event.customInstructions,
 				event.signal,
 			);

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import registerPactExtension, {
 	DEFAULT_THRESHOLD,
 	buildPactPreparation,
+	buildPrefixCachedCompactionMessages,
 	boundaryStartIndex,
 	findPactCutIndex,
 	formatPercentAmount,
@@ -151,6 +152,33 @@ test("boundaryStartIndex starts at previous compaction first kept entry", () => 
 	];
 
 	assert.equal(boundaryStartIndex(entries), 2);
+});
+
+test("prefix-cached compaction messages preserve the live context prefix", () => {
+	const entries = [
+		user("u1"),
+		{ type: "compaction", id: "c1", parentId: null, timestamp: "2026-05-28T00:00:00.000Z", summary: "summary", firstKeptEntryId: "u2", tokensBefore: 100 },
+		user("u2"),
+		assistant("a2"),
+		tool("t2"),
+		user("u3"),
+	];
+	const preparation = {
+		firstKeptEntryId: "u3",
+		messagesToSummarize: [],
+		turnPrefixMessages: [],
+		isSplitTurn: false,
+		tokensBefore: 123,
+		fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+		settings: { enabled: true, reserveTokens: 1000, keepRecentTokens: 1000 },
+	};
+
+	assert.deepEqual(buildPrefixCachedCompactionMessages(entries, preparation).map((message) => message.role), [
+		"compactionSummary",
+		"user",
+		"assistant",
+		"toolResult",
+	]);
 });
 
 test("parse settings validates and formats percent amounts and thresholds", () => {
