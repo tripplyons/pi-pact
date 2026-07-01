@@ -297,6 +297,7 @@ async function generatePrefixCachedCompaction(branchEntries, preparation, model,
 }
 
 const PACT_STATS_ENTRY = "pact-stats";
+const PACT_SETTINGS_ENTRY = "pact-settings";
 const PACT_CONFIG_FILE = "pact.json";
 
 function errorMessage(error: unknown): string {
@@ -305,6 +306,28 @@ function errorMessage(error: unknown): string {
 
 function pactStatsCount(entries: Array<{ type: string; customType?: string }>): number {
 	return entries.filter((entry) => entry.type === "custom" && entry.customType === PACT_STATS_ENTRY).length;
+}
+
+function isObject(value) {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStoredThreshold(value) {
+	if (!isObject(value)) return false;
+	if (value.kind === "percent") return typeof value.value === "number" && value.value > 0 && value.value < 1;
+	if (value.kind === "tokens") return Number.isInteger(value.value) && value.value > 0;
+	return false;
+}
+
+export function applyStoredSettings(settings, entries) {
+	for (const entry of entries) {
+		if (!isObject(entry) || entry.type !== "custom" || entry.customType !== PACT_SETTINGS_ENTRY || !isObject(entry.data)) continue;
+		if (typeof entry.data.enabled === "boolean") settings.enabled = entry.data.enabled;
+		if (typeof entry.data.fraction === "number" && entry.data.fraction > 0 && entry.data.fraction <= 1) settings.fraction = entry.data.fraction;
+		if (isStoredThreshold(entry.data.threshold)) settings.threshold = entry.data.threshold;
+		if (typeof entry.data.debugOrder === "boolean") settings.debugOrder = entry.data.debugOrder;
+	}
+	return settings;
 }
 
 function defaultStartupSettings() {
@@ -465,6 +488,7 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(`Pact config error: ${errorMessage(error)}; using defaults`, "warning");
 			startup = defaultStartupSettings();
 		}
+		applyStoredSettings(startup, ctx.sessionManager.getEntries());
 		enabled = startup.enabled;
 		fraction = startup.fraction;
 		threshold = startup.threshold;
@@ -577,6 +601,14 @@ export default function (pi: ExtensionAPI) {
 		verifyNextContext = false;
 	});
 
+	const persistSettings = () => {
+		try {
+			pi.appendEntry(PACT_SETTINGS_ENTRY, { enabled, fraction, threshold, debugOrder });
+		} catch (error) {
+			appendDebugRecord(debugFile, { type: "settings_append_failed", error: errorMessage(error) });
+		}
+	};
+
 	const notifyStatus = (ctx: ExtensionContext) => {
 		setStatus(ctx);
 		ctx.ui.notify(
@@ -604,6 +636,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			enabled = true;
+			persistSettings();
 			notifyStatus(ctx);
 		},
 	});
@@ -616,6 +649,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			enabled = false;
+			persistSettings();
 			notifyStatus(ctx);
 		},
 	});
@@ -628,6 +662,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			enabled = !enabled;
+			persistSettings();
 			notifyStatus(ctx);
 		},
 	});
@@ -669,6 +704,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify("Usage: /pact:debug [on|off]", "warning");
 				return;
 			}
+			persistSettings();
 			ctx.ui.notify(`Pact context-order debug ${debugOrder ? "on" : "off"}`, "info");
 		},
 	});
@@ -701,6 +737,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(errorMessage(error), "warning");
 				return;
 			}
+			persistSettings();
 			notifyStatus(ctx);
 		},
 	});
@@ -719,6 +756,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(errorMessage(error), "warning");
 				return;
 			}
+			persistSettings();
 			notifyStatus(ctx);
 		},
 	});

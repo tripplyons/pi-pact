@@ -24,7 +24,7 @@ Pact reads configuration in this order, with later values overriding earlier one
 2. Global config: `~/.pi/agent/pact.json`
 3. Trusted project config: `.pi/pact.json`
 4. Environment variables
-5. Session-local setting commands such as `/pact:on` and `/pact:fraction`
+5. Persisted session-local setting commands such as `/pact:on` and `/pact:fraction`
 
 Example `pact.json`:
 
@@ -53,6 +53,8 @@ Environment variable overrides:
 - `PACT_THRESHOLD=60%` or `PACT_THRESHOLD=160000`
 - `PACT_DEBUG=1|0|true|false`
 - `PACT_DEBUG_FILE=/tmp/pact.jsonl`
+
+Slash commands persist their session-local settings when you close and resume the same saved Pi session.
 
 Slash commands:
 

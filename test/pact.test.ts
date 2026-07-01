@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import registerPactExtension, {
 	DEFAULT_THRESHOLD,
+	applyStoredSettings,
 	buildPactPreparation,
 	buildPrefixCachedCompactionMessages,
 	boundaryStartIndex,
@@ -210,6 +211,27 @@ test("verifyCompactionSummaryOrder warns when the summary is not first", () => {
 	assert.match(verification.message, /not first/);
 });
 
+test("stored Pact settings override startup settings in entry order", () => {
+	const settings = {
+		enabled: true,
+		fraction: 0.8,
+		threshold: { kind: "percent", value: 0.6 },
+		debugOrder: false,
+		debugFile: undefined,
+	};
+
+	applyStoredSettings(settings, [
+		{ type: "custom", customType: "pact-settings", data: { enabled: false, fraction: 0.5, debugOrder: true } },
+		{ type: "custom", customType: "other", data: { enabled: true } },
+		{ type: "custom", customType: "pact-settings", data: { threshold: { kind: "tokens", value: 125000 } } },
+	]);
+
+	assert.equal(settings.enabled, false);
+	assert.equal(settings.fraction, 0.5);
+	assert.deepEqual(settings.threshold, { kind: "tokens", value: 125000 });
+	assert.equal(settings.debugOrder, true);
+});
+
 test("registers /pact as manual trigger and management commands with colon names", () => {
 	const commands = new Map();
 	const pi = {
@@ -235,5 +257,35 @@ test("registers /pact as manual trigger and management commands with colon names
 	].sort());
 	assert.match(commands.get("pact").description, /Manually trigger/);
 	assert.match(commands.get("pact:stats").description, /stats/i);
+});
+
+test("setting commands append persisted Pact settings", async () => {
+	const commands = new Map();
+	const appended = [];
+	const pi = {
+		on() {},
+		appendEntry(customType, data) {
+			appended.push({ customType, data });
+		},
+		registerCommand(name, options) {
+			commands.set(name, options);
+		},
+	};
+	const ctx = {
+		ui: {
+			theme: { fg: (_style, text) => text },
+			setStatus() {},
+			notify() {},
+		},
+	};
+
+	registerPactExtension(pi);
+	await commands.get("pact:off").handler("", ctx);
+	await commands.get("pact:fraction").handler("50%", ctx);
+
+	assert.deepEqual(appended, [
+		{ customType: "pact-settings", data: { enabled: false, fraction: 0.8, threshold: { kind: "percent", value: 0.6 }, debugOrder: false } },
+		{ customType: "pact-settings", data: { enabled: false, fraction: 0.5, threshold: { kind: "percent", value: 0.6 }, debugOrder: false } },
+	]);
 });
 
